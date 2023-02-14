@@ -1,5 +1,4 @@
-// Copyright 2020 - NVIDIA Corporation
-// SPDX-License-Identifier: MIT
+
 
 #include "post_process.cpp"
 
@@ -21,14 +20,11 @@
 
 #define MAX_DISPLAY_LEN 64
 
-/* The muxer output resolution must be set if the input streams will be of
- * different resolution. The muxer will scale all the input frames to this
- * resolution. */
+
 #define MUXER_OUTPUT_WIDTH 1920
 #define MUXER_OUTPUT_HEIGHT 1080
 
-/* Muxer batch formation timeout, for e.g. 40 millisec. Should ideally be set
- * based on the fastest source's framerate. */
+
 #define MUXER_BATCH_TIMEOUT_USEC 4000000
 
 template <class T>
@@ -45,7 +41,7 @@ gdouble p1 = 0.0000;
 gdouble p3 = 0.0000;
 gint prt = 0;
 
-/*Method to parse information returned from the model*/
+
 std::tuple<Vec2D<int>, Vec3D<float>>
 parse_objects_from_tensor_meta(NvDsInferTensorMeta *tensor_meta)
 {
@@ -64,20 +60,20 @@ parse_objects_from_tensor_meta(NvDsInferTensorMeta *tensor_meta)
   void *paf_data = tensor_meta->out_buf_ptrs_host[1];
   NvDsInferDims &paf_dims = tensor_meta->output_layers_info[1].inferDims;
 
-  /* Finding peaks within a given window */
+
   find_peaks(counts, peaks, cmap_data, cmap_dims, threshold, window_size, max_num_parts);
-  /* Non-Maximum Suppression */
+ 
   Vec3D<float> refined_peaks = refine_peaks(counts, peaks, cmap_data, cmap_dims, window_size);
-  /* Create a Bipartite graph to assign detected body-parts to a unique person in the frame */
+  
   Vec3D<float> score_graph = paf_score_graph(paf_data, paf_dims, topology, counts, refined_peaks, num_integral_samples);
-  /* Assign weights to all edges in the bipartite graph generated */
+
   Vec3D<int> connections = assignment(score_graph, topology, counts, link_threshold, max_num_parts);
-  /* Connecting all the Body Parts and Forming a Human Skeleton */
+
   Vec2D<int> objects = connect_parts(connections, topology, counts, max_num_objects);
   return {objects, refined_peaks};
 }
 
-/* MetaData to handle drawing onto the on-screen-display */
+
 static void
 create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFrameMeta *frame_meta, int frame_width, int frame_height)
 {
@@ -204,8 +200,7 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
   p3 = 0;
 }
 
-/* pgie_src_pad_buffer_probe  will extract metadata received from pgie
- * and update params for drawing rectangle, object information etc. */
+
 static GstPadProbeReturn
 pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
                           gpointer u_data)
@@ -286,7 +281,7 @@ osd_sink_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
     }
     display_meta = nvds_acquire_display_meta_from_pool(batch_meta);
 
-    /* Parameters to draw text onto the On-Screen-Display */
+  
     NvOSD_TextParams *txt_params = &display_meta->text_params[0];
     display_meta->num_labels = 1;
     txt_params->display_text = (char *)g_malloc0(MAX_DISPLAY_LEN);
@@ -457,7 +452,6 @@ int main(int argc, char *argv[])
              *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL,
              *nvvideoconvert = NULL, *tee = NULL, *h264encoder = NULL, *cap_filter = NULL, *filesink = NULL, *queue = NULL, *qtmux = NULL, *h264parser1 = NULL, *nvsink = NULL;
 
-/* Add a transform element for Jetson*/
 #ifdef PLATFORM_TEGRA
   GstElement *transform = NULL;
 #endif
@@ -465,33 +459,31 @@ int main(int argc, char *argv[])
   guint bus_watch_id;
   GstPad *osd_sink_pad = NULL;
 
-  /* Check input arguments */
+ 
   if (argc != 3)
   {
     g_printerr("Usage: %s <filename> <output-path>\n", argv[0]);
     return -1;
   }
 
-  /* Standard GStreamer initialization */
+ 
   gst_init(&argc, &argv);
   loop = g_main_loop_new(NULL, FALSE);
 
-  /* Create gstreamer elements */
-  /* Create Pipeline element that will form a connection of other elements */
+  
   pipeline = gst_pipeline_new("deepstream-tensorrt-openpose-pipeline");
 
-  /* Source element for reading from the file */
+
   source = gst_element_factory_make("filesrc", "file-source");
 
-  /* Since the data format in the input file is elementary h264 stream,
-   * we need a h264parser */
+ 
   h264parser = gst_element_factory_make("h264parse", "h264-parser");
   h264parser1 = gst_element_factory_make("h264parse", "h264-parser1");
 
-  /* Use nvdec_h264 for hardware accelerated decode on GPU */
+  
   decoder = gst_element_factory_make("nvv4l2decoder", "nvv4l2-decoder");
 
-  /* Create nvstreammux instance to form batches from one or more sources. */
+  
   streammux = gst_element_factory_make("nvstreammux", "stream-muxer");
 
   if (!pipeline || !streammux)
@@ -500,17 +492,16 @@ int main(int argc, char *argv[])
     return -1;
   }
 
-  /* Use nvinfer to run inferencing on decoder's output,
-   * behaviour of inferencing is set through config file */
+ 
   pgie = gst_element_factory_make("nvinfer", "primary-nvinference-engine");
 
-  /* Use convertor to convert from NV12 to RGBA as required by nvosd */
+ 
   nvvidconv = gst_element_factory_make("nvvideoconvert", "nvvideo-converter");
 
   queue = gst_element_factory_make("queue", "queue");
   filesink = gst_element_factory_make("filesink", "filesink");
   
-  /* Set output file location */
+
   char *output_path = argv[2];
   strcat(output_path,"Pose_Estimation.mp4");
   g_object_set(G_OBJECT(filesink), "location", output_path, NULL);
@@ -523,10 +514,10 @@ int main(int argc, char *argv[])
   g_object_set(G_OBJECT(cap_filter), "caps", caps, NULL);
   qtmux = gst_element_factory_make("qtmux", "muxer");
 
-  /* Create OSD to draw on the converted RGBA buffer */
+ 
   nvosd = gst_element_factory_make("nvdsosd", "nv-onscreendisplay");
 
-  /* Finally render the osd output */
+  
 #ifdef PLATFORM_TEGRA
   transform = gst_element_factory_make("nvegltransform", "nvegl-transform");
 #endif
@@ -549,25 +540,23 @@ int main(int argc, char *argv[])
   }
 #endif
 
-  /* we set the input filename to the source element */
+
   g_object_set(G_OBJECT(source), "location", argv[1], NULL);
 
   g_object_set(G_OBJECT(streammux), "width", MUXER_OUTPUT_WIDTH, "height",
                MUXER_OUTPUT_HEIGHT, "batch-size", 1,
                "batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC, NULL);
 
-  /* Set all the necessary properties of the nvinfer element,
-   * the necessary ones are : */
+
   g_object_set(G_OBJECT(pgie), "output-tensor-meta", TRUE,
                "config-file-path", "deepstream_pose_estimation_config.txt", NULL);
 
-  /* we add a message handler */
+  
   bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
   bus_watch_id = gst_bus_add_watch(bus, bus_call, loop);
   gst_object_unref(bus);
 
-  /* Set up the pipeline */
-  /* we add all elements into the pipeline */
+ 
 #ifdef PLATFORM_TEGRA
   gst_bin_add_many(GST_BIN(pipeline),
                    source, h264parser, decoder, streammux, pgie,
@@ -672,9 +661,7 @@ int main(int argc, char *argv[])
     gst_pad_add_probe(pgie_src_pad, GST_PAD_PROBE_TYPE_BUFFER,
                       pgie_src_pad_buffer_probe, (gpointer)sink, NULL);
 
-  /* Lets add probe to get informed of the meta data generated, we add probe to
-   * the sink pad of the osd element, since by that time, the buffer would have
-   * had got all the metadata. */
+
   osd_sink_pad = gst_element_get_static_pad(nvosd, "sink");
   if (!osd_sink_pad)
     g_print("Unable to get sink pad\n");
@@ -682,15 +669,15 @@ int main(int argc, char *argv[])
     gst_pad_add_probe(osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
                       osd_sink_pad_buffer_probe, (gpointer)sink, NULL);
 
-  /* Set the pipeline to "playing" state */
+  
   g_print("Now playing: %s\n", argv[1]);
   gst_element_set_state(pipeline, GST_STATE_PLAYING);
 
-  /* Wait till pipeline encounters an error or EOS */
+
   g_print("Running...\n");
   g_main_loop_run(loop);
 
-  /* Out of the main loop, clean up nicely */
+ 
   g_print("Returned, stopping playback\n");
   gst_element_set_state(pipeline, GST_STATE_NULL);
   g_print("Deleting pipeline\n");
