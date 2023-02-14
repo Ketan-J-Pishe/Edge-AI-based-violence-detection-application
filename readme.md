@@ -1,1 +1,1 @@
-##Edge AI based violence detection application
+# Edge AI based violence detection application
